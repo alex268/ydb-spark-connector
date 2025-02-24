@@ -39,17 +39,6 @@
 
         <dependency>
             <groupId>tech.ydb</groupId>
-            <artifactId>ydb-sdk-core</artifactId>
-
-            <exclusions>
-                <exclusion>
-                    <groupId>io.grpc</groupId>
-                    <artifactId>grpc-netty-shaded</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>tech.ydb</groupId>
             <artifactId>ydb-sdk-scheme</artifactId>
         </dependency>
         <dependency>
