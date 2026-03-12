@@ -3,11 +3,8 @@ package tech.ydb.spark.connector.write;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.spark.TaskContext;
 import org.apache.spark.executor.OutputMetrics;
@@ -50,10 +47,8 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
     private final int maxConcurrency;
     private final Semaphore semaphore;
 
-    private final AtomicReference<WriteStats> writeStats = new AtomicReference<>();
-    private final Map<CompletableFuture<?>, WriteStats> writesInFly = new ConcurrentHashMap<>();
     private List<Value<?>> currentBatch = new ArrayList<>();
-    private int currentBatchSize = 0;
+    private int currentBatchBytesSize = 0;
     private volatile Status lastError = null;
 
     public YdbDataWriter(SessionRetryContext retryCtx, YdbTypes types, StructType structType, ValueReader[] readers,
@@ -81,11 +76,11 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
         Value<?>[] row = new Value<?>[readers.length];
         for (int idx = 0; idx < row.length; ++idx) {
             row[idx] = readers[idx].read(types, record);
-            currentBatchSize += row[idx].toPb().getSerializedSize();
+            currentBatchBytesSize += row[idx].toPb().getSerializedSize();
         }
 
         currentBatch.add(structType.newValueUnsafe(row));
-        if (currentBatch.size() >= maxRowsCount || currentBatchSize >= maxBytesSize) {
+        if (currentBatch.size() >= maxRowsCount || currentBatchBytesSize >= maxBytesSize) {
             writeBatch();
         }
     }
@@ -96,8 +91,6 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
 
         semaphore.acquireUninterruptibly(maxConcurrency);
         semaphore.release(maxConcurrency);
-
-        updateStatistics();
 
         Status localError = lastError;
         if (localError != null) {
@@ -111,34 +104,24 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
 
     @Override
     public void abort() throws IOException {
-        writesInFly.keySet().forEach(f -> f.cancel(false));
         semaphore.acquireUninterruptibly(maxConcurrency);
         semaphore.release(maxConcurrency);
     }
 
     @Override
-    public void close() throws IOException {
-    }
-
-    private void updateStatistics() {
-        WriteStats ws = writeStats.getAndSet(null);
-        if (ws != null && ws.isNonZero()) {
-            OutputMetrics om = TaskContext.get().taskMetrics().outputMetrics();
-            om.setRecordsWritten(om.recordsWritten() + ws.rows);
-            om.setBytesWritten(om.bytesWritten() + ws.bytes);
-        }
-    }
+    public void close() throws IOException { }
 
     private void writeBatch() {
-        updateStatistics();
         if (currentBatch.isEmpty()) {
-            currentBatchSize = 0;
+            currentBatchBytesSize = 0;
             return;
         }
-        WriteStats currentStats = new WriteStats(currentBatch.size(), currentBatchSize);
-        currentBatchSize = 0;
 
+        int batchBytesSize = currentBatchBytesSize;
         Value<?>[] copy = currentBatch.toArray(new Value<?>[0]);
+        OutputMetrics metrics = TaskContext.get().taskMetrics().outputMetrics();
+
+        currentBatchBytesSize = 0;
         currentBatch = new ArrayList<>();
 
         semaphore.acquireUninterruptibly();
@@ -148,47 +131,16 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
         }
 
         ListValue batch = ListValue.of(copy);
-        CompletableFuture<Status> future = retryCtx.supplyStatus(session -> executeWrite(session, batch));
-        writesInFly.put(future, currentStats);
 
-        future.whenComplete((st, th) -> {
-            WriteStats ws = writesInFly.remove(future);
-            if (th == null && st != null && st.isSuccess()) {
-                writeStats.accumulateAndGet(ws, WriteStats::accumulate);
+        retryCtx.supplyStatus(session -> executeWrite(session, batch)).whenComplete((st, th) -> {
+            if (st != null && st.isSuccess()) {
+                metrics._bytesWritten().add(batchBytesSize);
+                metrics._recordsWritten().add(batch.size());
+            } else {
+                lastError = st != null ? st : Status.of(StatusCode.CLIENT_INTERNAL_ERROR, th);
             }
 
-            if (st != null && !st.isSuccess()) {
-                lastError = st;
-            }
-            if (th != null) {
-                lastError = Status.of(StatusCode.CLIENT_INTERNAL_ERROR, th);
-            }
             semaphore.release();
         });
-    }
-
-    static class WriteStats {
-
-        final long rows;
-        final long bytes;
-
-        WriteStats(long rows, long bytes) {
-            this.rows = rows;
-            this.bytes = bytes;
-        }
-
-        boolean isNonZero() {
-            return rows > 0L || bytes > 0L;
-        }
-
-        static WriteStats accumulate(WriteStats x, WriteStats y) {
-            if (x == null) {
-                return y;
-            }
-            if (y == null) {
-                return x;
-            }
-            return new WriteStats(x.rows + y.rows, x.bytes + y.bytes);
-        }
     }
 }

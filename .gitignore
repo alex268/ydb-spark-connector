@@ -7,9 +7,8 @@
 
 # NetBeans project files
 **/nbactions.xml
-**/nb-configuration.xml
-**/nbactions.xml
 **/nbactions-*.xml
+**/nb-configuration.xml
 
 # Intellij project files
 **/.idea/
