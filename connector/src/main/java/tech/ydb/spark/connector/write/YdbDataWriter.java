@@ -3,11 +3,11 @@ package tech.ydb.spark.connector.write;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 
+import org.apache.spark.TaskContext;
+import org.apache.spark.executor.OutputMetrics;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.write.DataWriter;
 import org.apache.spark.sql.connector.write.WriterCommitMessage;
@@ -47,9 +47,8 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
     private final int maxConcurrency;
     private final Semaphore semaphore;
 
-    private final Map<CompletableFuture<?>, CompletableFuture<?>> writesInFly = new ConcurrentHashMap<>();
     private List<Value<?>> currentBatch = new ArrayList<>();
-    private int currentBatchSize = 0;
+    private int currentBatchBytesSize = 0;
     private volatile Status lastError = null;
 
     public YdbDataWriter(SessionRetryContext retryCtx, YdbTypes types, StructType structType, ValueReader[] readers,
@@ -77,11 +76,11 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
         Value<?>[] row = new Value<?>[readers.length];
         for (int idx = 0; idx < row.length; ++idx) {
             row[idx] = readers[idx].read(types, record);
-            currentBatchSize += row[idx].toPb().getSerializedSize();
+            currentBatchBytesSize += row[idx].toPb().getSerializedSize();
         }
 
         currentBatch.add(structType.newValueUnsafe(row));
-        if (currentBatch.size() >= maxRowsCount || currentBatchSize >= maxBytesSize) {
+        if (currentBatch.size() >= maxRowsCount || currentBatchBytesSize >= maxBytesSize) {
             writeBatch();
         }
     }
@@ -95,7 +94,7 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
 
         Status localError = lastError;
         if (localError != null) {
-            logger.warn("ydb writer got error {} on commit", localError);
+            logger.error("ydb writer got error on commit: {}", localError);
             localError.expectSuccess("cannot commit write");
         }
 
@@ -105,22 +104,24 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
 
     @Override
     public void abort() throws IOException {
-        writesInFly.keySet().forEach(f -> f.cancel(false));
         semaphore.acquireUninterruptibly(maxConcurrency);
         semaphore.release(maxConcurrency);
     }
 
     @Override
-    public void close() throws IOException {
-    }
+    public void close() throws IOException { }
 
     private void writeBatch() {
-        currentBatchSize = 0;
         if (currentBatch.isEmpty()) {
+            currentBatchBytesSize = 0;
             return;
         }
 
+        int batchBytesSize = currentBatchBytesSize;
         Value<?>[] copy = currentBatch.toArray(new Value<?>[0]);
+        OutputMetrics metrics = TaskContext.get().taskMetrics().outputMetrics();
+
+        currentBatchBytesSize = 0;
         currentBatch = new ArrayList<>();
 
         semaphore.acquireUninterruptibly();
@@ -130,18 +131,15 @@ public abstract class YdbDataWriter implements DataWriter<InternalRow> {
         }
 
         ListValue batch = ListValue.of(copy);
-        CompletableFuture<Status> future = retryCtx.supplyStatus(session -> executeWrite(session, batch));
-        writesInFly.put(future, future);
 
-        future.whenComplete((st, th) -> {
-            writesInFly.remove(future);
+        retryCtx.supplyStatus(session -> executeWrite(session, batch)).whenComplete((st, th) -> {
+            if (st != null && st.isSuccess()) {
+                metrics._bytesWritten().add(batchBytesSize);
+                metrics._recordsWritten().add(batch.size());
+            } else {
+                lastError = st != null ? st : Status.of(StatusCode.CLIENT_INTERNAL_ERROR, th);
+            }
 
-            if (st != null && !st.isSuccess()) {
-                lastError = st;
-            }
-            if (th != null) {
-                lastError = Status.of(StatusCode.CLIENT_INTERNAL_ERROR, th);
-            }
             semaphore.release();
         });
     }
