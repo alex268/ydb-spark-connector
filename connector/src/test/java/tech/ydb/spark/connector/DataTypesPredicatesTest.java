@@ -1,5 +1,6 @@
 package tech.ydb.spark.connector;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
@@ -126,7 +127,7 @@ public class DataTypesPredicatesTest {
     }
 
     @AfterClass
-    public static void close() {
+    public static void close() throws IOException {
         if (spark != null) {
             dropTables();
             spark.close();

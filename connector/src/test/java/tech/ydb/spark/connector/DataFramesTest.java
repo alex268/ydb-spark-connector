@@ -1,5 +1,6 @@
 package tech.ydb.spark.connector;
 
+import java.io.IOException;
 import java.util.Collections;
 
 import org.apache.spark.SparkConf;
@@ -61,7 +62,7 @@ public class DataFramesTest {
     }
 
     @AfterClass
-    public static void close() {
+    public static void close() throws IOException {
         if (spark != null) {
             spark.close();
         }

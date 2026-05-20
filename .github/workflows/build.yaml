@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '8'
           distribution: 'temurin'
@@ -40,10 +40,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '8'
           distribution: 'temurin'
@@ -60,7 +60,7 @@ jobs:
 
       - name: Checkout YDB Java SDK
         if: env.NEED_SDK == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ydb-platform/ydb-java-sdk
           ref: master
@@ -77,7 +77,7 @@ jobs:
 
       - name: Checkout YC Auth provider
         if: env.NEED_SDK == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ydb-platform/ydb-java-yc
           ref: master
@@ -106,10 +106,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: 8
           distribution: 'temurin'
@@ -126,7 +126,7 @@ jobs:
 
       - name: Checkout YDB Java SDK
         if: env.NEED_SDK == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ydb-platform/ydb-java-sdk
           ref: master
@@ -143,7 +143,7 @@ jobs:
 
       - name: Checkout YC Auth provider
         if: env.NEED_SDK == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ydb-platform/ydb-java-yc
           ref: master
@@ -162,6 +162,6 @@ jobs:
         run: mvn $MAVEN_ARGS test
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

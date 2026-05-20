@@ -1,5 +1,6 @@
 package tech.ydb.spark.connector;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -75,7 +76,7 @@ public class PredicatesTest {
     }
 
     @AfterClass
-    public static void close() {
+    public static void close() throws IOException {
         if (spark != null) {
             dropTables();
             spark.close();
