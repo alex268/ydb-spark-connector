@@ -1,5 +1,6 @@
 package tech.ydb.spark.connector;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.Month;
 import java.util.ArrayList;
@@ -61,7 +62,7 @@ public class DataTypesTest {
     }
 
     @AfterClass
-    public static void close() {
+    public static void close() throws IOException {
         if (spark != null) {
             spark.close();
         }

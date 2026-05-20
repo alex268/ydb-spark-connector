@@ -1,5 +1,6 @@
 package tech.ydb.spark.connector;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -70,7 +71,7 @@ public class IntegrationTest {
     }
 
     @AfterClass
-    public static void closeAll() {
+    public static void closeAll() throws IOException {
         if (spark != null) {
             spark.close();
         }
