@@ -15,15 +15,13 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <scala.version>2.12</scala.version>
-        <spark.version>3.5.4</spark.version>
-        <!-- Must be syncronized with spark version -->
-        <slf4j.version>2.0.6</slf4j.version>
+        <scala.version>2.13</scala.version>
+        <spark.version>3.5.8</spark.version>
 
-        <ydb.sdk.version>2.3.26</ydb.sdk.version>
-        <!-- Must be syncronized with ydb version -->
-        <grpc.version>1.59.1</grpc.version>
-        <protobuf.version>3.24.0</protobuf.version>
+        <ydb.sdk.version>2.4.3</ydb.sdk.version>
+        <!-- Must be syncronized with YDB SDK version -->
+        <grpc.version>1.68.3</grpc.version>
+        <protobuf.version>3.25.5</protobuf.version>
     </properties>
 
     <licenses>
@@ -61,12 +59,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-
             <dependency>
                 <groupId>io.grpc</groupId>
                 <artifactId>grpc-netty</artifactId>
@@ -109,7 +101,7 @@
             <dependency>
                 <groupId>tech.ydb.auth</groupId>
                 <artifactId>yc-auth-provider</artifactId>
-                <version>2.3.0</version>
+                <version>2.3.1</version>
             </dependency>
 
             <dependency>

@@ -75,7 +75,7 @@ public class YdbWriterFactory implements DataWriterFactory {
         Map<String, Type> inputTypes = new HashMap<>();
         Map<String, ValueReader> columnReadeds = new HashMap<>();
 
-        Iterator<StructField> it = schema.toIterator();
+        Iterator<StructField> it = schema.iterator();
         int idx = 0;
         while (it.hasNext()) {
             StructField sf = it.next();
