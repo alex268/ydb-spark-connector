@@ -18,7 +18,7 @@ import tech.ydb.table.SessionRetryContext;
 /**
  * Common batching/retry/back-pressure scaffolding shared by all YDB data writers.
  *
- * @author Aleksandr Gorshenin <alexandr268@ydb.tech>
+ * @author Aleksandr Gorshenin {@literal <alexandr268@ydb.tech>}
  */
 class YdbDataWriter implements DataWriter<InternalRow> {
     private static final Logger logger = LoggerFactory.getLogger(YdbDataWriter.class);

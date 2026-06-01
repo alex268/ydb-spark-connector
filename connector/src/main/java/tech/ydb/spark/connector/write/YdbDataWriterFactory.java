@@ -25,7 +25,7 @@ import tech.ydb.table.values.PrimitiveType;
 
 /**
  *
- * @author Aleksandr Gorshenin
+ * @author Aleksandr Gorshenin {@literal <alexandr268@ydb.tech>}
  */
 public class YdbDataWriterFactory implements DataWriterFactory {
     private static final long serialVersionUID = -6000846276376311177L;

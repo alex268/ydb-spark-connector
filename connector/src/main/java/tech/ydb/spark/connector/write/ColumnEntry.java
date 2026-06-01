@@ -11,11 +11,7 @@ import tech.ydb.table.values.Type;
 import tech.ydb.table.values.Value;
 
 /**
- * Per-column information used to wire up a YDB data writer:
- * destination column name, its YDB type and the {@link ValueReader} that produces a value
- * from a Spark {@code InternalRow}.
- *
- * @author Aleksandr Gorshenin <alexandr268@ydb.tech>
+ * @author Aleksandr Gorshenin {@literal <alexandr268@ydb.tech>}
  */
 public final class ColumnEntry {
     private final String name;

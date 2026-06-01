@@ -24,7 +24,7 @@ import tech.ydb.table.values.Type;
 /**
  * Encodes Spark rows as Apache Arrow IPC payloads and ships them via {@code BulkUpsert}.
  *
- * @author Aleksandr Gorshenin
+ * @author Aleksandr Gorshenin {@literal <alexandr268@ydb.tech>}
  */
 public class YdbWriterArrow implements YdbWriter {
     private final List<ColumnEntry> columns;
