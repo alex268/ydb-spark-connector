@@ -30,6 +30,7 @@ public class YdbWriterArrow implements YdbWriter {
     private final List<ColumnEntry> columns;
     private final String tablePath;
     private final ApacheArrowWriter arrowWriter;
+    private final BulkUpsertSettings settings = new BulkUpsertSettings();
 
     private ApacheArrowWriter.Batch batch;
     private int rowsCount = 0;
@@ -79,7 +80,7 @@ public class YdbWriterArrow implements YdbWriter {
             rowsCount = 0;
             bytesSize = 0;
             batch = arrowWriter.createNewBatch(0);
-            return session -> session.executeBulkUpsert(tablePath, data, new BulkUpsertSettings());
+            return session -> session.executeBulkUpsert(tablePath, data, settings);
         } catch (IOException ex) {
             throw new UncheckedIOException("Failed to serialize Arrow batch", ex);
         }
@@ -163,7 +164,7 @@ public class YdbWriterArrow implements YdbWriter {
                 return 4;
             case Double:
                 row.writeDouble(name, record.getDouble(ordinal));
-                return 4;
+                return 8;
             case Text:
                 UTF8String text = record.getUTF8String(ordinal);
                 row.writeText(name, text.toString());
