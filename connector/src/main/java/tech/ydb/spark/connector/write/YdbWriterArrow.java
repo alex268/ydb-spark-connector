@@ -2,14 +2,16 @@ package tech.ydb.spark.connector.write;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-import org.apache.arrow.memory.RootAllocator;
 import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.util.ArrayData;
+import org.apache.spark.sql.catalyst.util.DateTimeUtils;
 import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Decimal;
+import org.apache.spark.sql.util.ArrowUtils;
 import org.apache.spark.unsafe.types.UTF8String;
 
 import tech.ydb.table.query.arrow.ApacheArrowData;
@@ -25,8 +27,6 @@ import tech.ydb.table.values.Type;
  * @author Aleksandr Gorshenin
  */
 public class YdbWriterArrow implements YdbWriter {
-    private final RootAllocator allocator;
-
     private final List<ColumnEntry> columns;
     private final String tablePath;
     private final ApacheArrowWriter arrowWriter;
@@ -36,7 +36,6 @@ public class YdbWriterArrow implements YdbWriter {
     private int bytesSize = 0;
 
     public YdbWriterArrow(String tablePath, List<ColumnEntry> columns) {
-        this.allocator = new RootAllocator();
         this.columns = columns;
         this.tablePath = tablePath;
 
@@ -45,7 +44,7 @@ public class YdbWriterArrow implements YdbWriter {
             schema.addColumn(column.getName(), column.getType());
         }
 
-        this.arrowWriter = schema.createWriter(allocator);
+        this.arrowWriter = schema.createWriter(ArrowUtils.rootAllocator());
         this.batch = arrowWriter.createNewBatch(0);
     }
 
@@ -71,7 +70,6 @@ public class YdbWriterArrow implements YdbWriter {
     @Override
     public void close() {
         arrowWriter.close();
-        allocator.close();
     }
 
     @Override
@@ -87,6 +85,18 @@ public class YdbWriterArrow implements YdbWriter {
         }
     }
 
+    private static String castMsg(DataType dataType, Type type) {
+        return "Arrow ingestion does not support casting " + dataType + " to " + type;
+    }
+
+    private static byte[] readBytes(InternalRow record, DataType dataType, Type type, int ordinal) {
+        if (!dataType.sameType(DataTypes.BinaryType)) {
+            throw new IllegalArgumentException(castMsg(dataType, type));
+        }
+        return (byte[]) record.get(ordinal, dataType);
+    }
+
+    @SuppressWarnings("MethodLength")
     private static int writeValue(ColumnEntry column, ApacheArrowWriter.Row row, InternalRow record) {
         DataType dataType = column.getDataType();
         String name = column.getName();
@@ -104,7 +114,7 @@ public class YdbWriterArrow implements YdbWriter {
                 row.writeNull(name);
                 return column.getDataType().defaultSize();
             }
-            type = type.makeOptional();
+            type = type.unwrapOptional();
         }
 
         if (type.getKind() == Type.Kind.DECIMAL) {
@@ -145,7 +155,8 @@ public class YdbWriterArrow implements YdbWriter {
                 row.writeUint32(name, record.getLong(ordinal));
                 return 4;
             case Uint64:
-                row.writeUint64(name, record.getLong(ordinal));
+                Decimal uint64 = record.getDecimal(ordinal, 22, 0);
+                row.writeUint64(name, uint64.toJavaBigInteger().longValue());
                 return 8;
             case Float:
                 row.writeFloat(name, record.getFloat(ordinal));
@@ -166,42 +177,73 @@ public class YdbWriterArrow implements YdbWriter {
                 row.writeJsonDocument(name, jsonDocument.toString());
                 return jsonDocument.numBytes();
             case Bytes:
-                ArrayData bytes = record.getArray(ordinal);
-                row.writeBytes(name, bytes.toByteArray());
-                return bytes.numElements();
+                byte[] bytes = readBytes(record, dataType, type, ordinal);
+                row.writeBytes(name, bytes);
+                return bytes.length;
             case Yson:
-                ArrayData yson = record.getArray(ordinal);
-                row.writeYson(name, yson.toByteArray());
-                return yson.numElements();
+                byte[] yson = readBytes(record, dataType, type, ordinal);
+                row.writeYson(name, yson);
+                return yson.length;
             case Uuid:
                 UTF8String uuid = record.getUTF8String(ordinal);
                 row.writeUuid(name, UUID.fromString(uuid.toString()));
                 return 16;
-//            case Date:
-//                record.get(ordinal, dataType)
-//                row.writeDate(name, pv.getDate());
-//                break;
-//            case Datetime:
-//                row.writeDatetime(name, pv.getDatetime());
-//                break;
-//            case Timestamp:
-//                row.writeTimestamp(name, pv.getTimestamp());
-//                break;
+            case Date:
+                if (dataType.sameType(DataTypes.DateType)) {
+                    row.writeDate(name, LocalDate.ofEpochDay(record.getInt(ordinal)));
+                } else {
+                    throw new IllegalArgumentException(castMsg(dataType, type));
+                }
+                return 2;
+            case Datetime:
+                if (dataType.sameType(DataTypes.TimestampType)) {
+                    row.writeDatetime(name, DateTimeUtils.microsToLocalDateTime(record.getLong(ordinal)));
+                } else {
+                    throw new IllegalArgumentException(castMsg(dataType, type));
+                }
+                return 4;
+            case Timestamp:
+                if (dataType.sameType(DataTypes.TimestampType)) {
+                    row.writeTimestamp(name, DateTimeUtils.microsToInstant(record.getLong(ordinal)));
+                } else {
+                    throw new IllegalArgumentException(castMsg(dataType, type));
+                }
+                return 8;
 //            case Interval:
-//                row.writeInterval(name, pv.getInterval());
-//                break;
-//            case Date32:
-//                row.writeDate32(name, pv.getDate32());
-//                break;
-//            case Datetime64:
-//                row.writeDatetime64(name, pv.getDatetime64());
-//                break;
-//            case Timestamp64:
-//                row.writeTimestamp64(name, pv.getTimestamp64());
-//                break;
+//                if (dataType.sameType(DataTypes.CalendarIntervalType)) {
+//                    row.writeInterval(name, Duration.ofMillis(record.getLong(ordinal)));
+//                } else {
+//                    throw new IllegalArgumentException(castMsg(dataType, type));
+//                }
+//                return 8;
+            case Date32:
+                if (dataType.sameType(DataTypes.DateType)) {
+                    row.writeDate32(name, LocalDate.ofEpochDay(record.getInt(ordinal)));
+                } else {
+                    throw new IllegalArgumentException(castMsg(dataType, type));
+                }
+                return 4;
+            case Datetime64:
+                if (dataType.sameType(DataTypes.TimestampType)) {
+                    row.writeDatetime64(name, DateTimeUtils.microsToLocalDateTime(record.getLong(ordinal)));
+                } else {
+                    throw new IllegalArgumentException(castMsg(dataType, type));
+                }
+                return 8;
+            case Timestamp64:
+                if (dataType.sameType(DataTypes.TimestampType)) {
+                    row.writeTimestamp64(name, DateTimeUtils.microsToInstant(record.getLong(ordinal)));
+                } else {
+                    throw new IllegalArgumentException(castMsg(dataType, type));
+                }
+                return 8;
 //            case Interval64:
-//                row.writeInterval64(name, pv.getInterval64());
-//                break;
+//                if (dataType.sameType(DataTypes.CalendarIntervalType)) {
+//                    row.writeInterval64(name, Duration.ofMillis(record.getLong(ordinal)));
+//                } else {
+//                    throw new IllegalArgumentException(castMsg(dataType, type));
+//                }
+//                return 8;
             default:
                 throw new IllegalArgumentException("Arrow ingestion does not support type " + type);
         }

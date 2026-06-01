@@ -6,14 +6,18 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 
+import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Decimal;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.junit.Assert;
 
 /**
  *
@@ -42,10 +46,15 @@ public class TestData {
             new StructField("col_decimal35", DataTypes.createDecimalType(35, 6), nullable, Metadata.empty()),
             new StructField("col_binary", DataTypes.BinaryType, nullable, Metadata.empty()),
             new StructField("col_text", DataTypes.StringType, nullable, Metadata.empty()),
+            new StructField("col_json", DataTypes.StringType, nullable, Metadata.empty()),
             new StructField("col_date", DataTypes.DateType, nullable, Metadata.empty()),
             new StructField("col_date32", DataTypes.DateType, nullable, Metadata.empty()),
+            new StructField("col_datetime", DataTypes.TimestampType, nullable, Metadata.empty()),
+            new StructField("col_datetime64", DataTypes.TimestampType, nullable, Metadata.empty()),
             new StructField("col_timestamp", DataTypes.TimestampType, nullable, Metadata.empty()),
-            new StructField("col_timestamp64", DataTypes.TimestampType, nullable, Metadata.empty())
+            new StructField("col_timestamp64", DataTypes.TimestampType, nullable, Metadata.empty()),
+//            new StructField("col_interval", DataTypes.CalendarIntervalType, nullable, Metadata.empty()),
+//            new StructField("col_interval64", DataTypes.CalendarIntervalType, nullable, Metadata.empty()),
         });
     }
 
@@ -72,10 +81,16 @@ public class TestData {
             + "col_decimal35 Decimal(35,6)" + suffix
             + "col_binary Bytes" + suffix
             + "col_text Text" + suffix
+            + "col_json Json" + suffix
             + "col_date Date" + suffix
             + "col_date32 Date32" + suffix
+            + "col_datetime Datetime" + suffix
+            + "col_datetime64 Datetime64" + suffix
             + "col_timestamp Timestamp" + suffix
-            + "col_timestamp64 Timestamp64" + suffix;
+            + "col_timestamp64 Timestamp64" + suffix
+//            + "col_interval Interval" + suffix
+//            + "col_interval64 Interval64" + suffix
+            + "";
     }
 
 
@@ -101,13 +116,20 @@ public class TestData {
 
             byte[] colBinary = ("bytes" + id).getBytes(StandardCharsets.UTF_8);
             String colText = "text-value-" + id;
+            String colJson = "{ \"id\": " + id + "}";
 
             // TODO: Check usage of default timezone
             Date colDate = new Date(Instant.ofEpochSecond(86400L * id).toEpochMilli());
             Date colDate32 = new Date(Instant.ofEpochSecond(86400L * sign * id).toEpochMilli());
 
+            Timestamp colDatetime = new Timestamp(3601L * id * 1000);
+            Timestamp colDatetime64 = new Timestamp(3601L * sign * id * 1000);
+
             Timestamp colTimestamp = new Timestamp(86400L * id * 311);
             Timestamp colTimestamp64 = new Timestamp(86400L * sign * id * 311);
+
+//            Duration colInterval = Duration.ofMillis(id * 3121);
+//            Duration colInterval64 = Duration.ofMillis(id * sign * 3121);
 
             rows.add(new GenericRowWithSchema(new Object[]{
                 id,
@@ -126,14 +148,57 @@ public class TestData {
                 (nullable && id % 29 == 0) ? null : colDecimal35,
                 (nullable && id % 23 == 0) ? null : colBinary,
                 (nullable && id % 19 == 0) ? null : colText,
-                (nullable && id % 17 == 0) ? null : colDate,
-                (nullable && id % 13 == 0) ? null : colDate32,
+                (nullable && id % 17 == 0) ? null : colJson,
+                (nullable && id % 13 == 0) ? null : colDate,
+                (nullable && id % 11 == 0) ? null : colDate32,
+                (nullable && id % 7 == 0)  ? null : colDatetime,
+                (nullable && id % 13 == 0) ? null : colDatetime64,
                 (nullable && id % 11 == 0) ? null : colTimestamp,
-                (nullable && id % 7 == 0)  ? null : colTimestamp64
+                (nullable && id % 7 == 0)  ? null : colTimestamp64,
+//                (nullable && id % 11 == 0) ? null : colInterval,
+//                (nullable && id % 7 == 0)  ? null : colInterval64
             }, type));
         }
 
         return rows;
     }
 
+    public static void assertEquals(String message, int totalCount, Dataset<Row> ds1, Dataset<Row> ds2) {
+        try {
+            StructType schema = ds1.schema();
+            Assert.assertEquals("[" + message + "] must have equals schemas", schema, ds2.schema());
+
+            Iterator<Row> it1 = ds1.toLocalIterator();
+            Iterator<Row> it2 = ds2.toLocalIterator();
+            int count = 0;
+            while (it1.hasNext()) {
+                Assert.assertTrue("[" + message + "] ds1 has more rows then ds2", it2.hasNext());
+                count++;
+
+                Row r1 = it1.next();
+                Row r2 = it2.next();
+
+                for (int idx = 0; idx < schema.size(); idx += 1) {
+                    String name = schema.fieldNames()[idx];
+                    DataType type = schema.fields()[idx].dataType();
+                    if (type.sameType(DataTypes.BinaryType)) {
+                        Assert.assertArrayEquals("[" + message + "] row " + count + " column " + name + " must be equals",
+                                (byte[]) r1.get(idx), (byte[]) r2.get(idx)
+                        );
+                    } else {
+                        Assert.assertEquals("[" + message + "] row " + count + " column " + name + " must be equals",
+                                r1.get(idx), r2.get(idx)
+                        );
+                    }
+                }
+            }
+
+            Assert.assertFalse("[" + message + "] ds1 has less rows then ds2", it2.hasNext());
+            Assert.assertEquals("[" + message + "] check rows count", totalCount, count);
+        } catch (AssertionError ex) {
+            ds1.show();
+            ds2.show();
+            throw ex;
+        }
+    }
 }
