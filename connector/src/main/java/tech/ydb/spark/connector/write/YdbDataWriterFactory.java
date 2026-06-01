@@ -42,6 +42,7 @@ public class YdbDataWriterFactory implements DataWriterFactory {
     private final org.apache.spark.sql.types.StructType schema;
 
     private final IngestMethod method;
+    private final boolean useApacheArrow;
     private final String autoPkName;
     private final int batchRowsCount;
     private final int batchBytesLimit;
@@ -52,12 +53,17 @@ public class YdbDataWriterFactory implements DataWriterFactory {
         this.table = table;
         this.types = new YdbTypes(logical.options());
         this.method = OperationOption.INGEST_METHOD.readEnum(logical.options(), IngestMethod.BULK_UPSERT);
+        this.useApacheArrow = OperationOption.USE_APACHE_ARROW.readBoolean(logical.options(), false);
         this.batchRowsCount = OperationOption.BATCH_ROWS.readInt(logical.options(), MAX_ROWS_COUNT);
         this.batchBytesLimit = OperationOption.BATCH_LIMIT.readInt(logical.options(), MAX_BYTES_SIZE);
         this.batchConcurrency = OperationOption.BATCH_CONCURRENCY.readInt(logical.options(), CONCURRENCY);
         this.autoPkName = OperationOption.TABLE_AUTOPK_NAME.read(logical.options(), OperationOption.DEFAULT_AUTO_PK);
         this.retryCount = OperationOption.WRITE_RETRY_COUNT.readInt(logical.options(), WRITE_RETRY_COUNT);
         this.schema = logical.schema();
+
+        if (useApacheArrow && method != IngestMethod.BULK_UPSERT) {
+            logger.warn("Arrow ingestion was disabled because it is only supported with method BULK_UPSERT");
+        }
     }
 
     @Override
@@ -75,6 +81,9 @@ public class YdbDataWriterFactory implements DataWriterFactory {
         String tablePath = table.getTablePath();
 
         if (method == IngestMethod.BULK_UPSERT) {
+            if (useApacheArrow) {
+                return new YdbWriterArrow(tablePath, columns);
+            }
             return new YdbWriterBulkUpsert(tablePath, types, columns);
         }
 

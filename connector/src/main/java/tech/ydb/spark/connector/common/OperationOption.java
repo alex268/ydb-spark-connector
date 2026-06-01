@@ -68,6 +68,11 @@ public enum OperationOption implements SparkOption {
     BATCH_CONCURRENCY("batch.concurrency"),
 
     /**
+     * Use Apache Arrow IPC encoding for writing and reading. Default false.
+     */
+    USE_APACHE_ARROW("useApacheArrow"),
+
+    /**
      * YDB table's primary key, as a comma-delimited list of column names.
      */
     TABLE_AUTOCREATE("table.autocreate"),
