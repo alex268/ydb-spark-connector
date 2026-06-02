@@ -7,8 +7,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.spi.ExtendedLogger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkException;
+import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
@@ -51,6 +56,8 @@ public class DataTypesTest {
             ydbCreds.put("auth.token", YDB.authToken());
         }
 
+        ydbCreds.put("table.autocreate", "false");
+
         SparkConf conf = new SparkConf()
                 .setMaster("local[*]")
                 .setAppName("ydb-spark-predicates-test")
@@ -73,8 +80,12 @@ public class DataTypesTest {
         YdbRegistry.closeAll();
     }
 
+    private static DataFrameReader readYdb() {
+        return spark.read().format("ydb").options(ydbCreds);
+    }
+
     @Test
-    public void datetimeTest() {
+    public void incorrectDateTest() {
         StructType schema = new StructType(new StructField[]{
             new StructField("id", DataTypes.IntegerType, false, Metadata.empty()),
             new StructField("date", DataTypes.DateType, false, Metadata.empty()),
@@ -92,26 +103,88 @@ public class DataTypesTest {
 
         Dataset<Row> df1 = spark.createDataFrame(test1, schema);
 
-
+        Map<ExtendedLogger, Level> before = new HashMap<>();
         try {
+            for (Class<?> clazz: new Class<?>[] {
+                org.apache.spark.util.Utils.class,
+                org.apache.spark.executor.Executor.class,
+                org.apache.spark.sql.execution.datasources.v2.AppendDataExec.class,
+                org.apache.spark.sql.execution.datasources.v2.DataWritingSparkTask.class,
+            }) {
+                ExtendedLogger logger = LogManager.getContext(true).getLogger(clazz);
+                before.put(logger, logger.getLevel());
+                // hide logger
+                Configurator.setLevel(logger, Level.OFF);
+            }
+
             SparkException ex = Assert.assertThrows(SparkException.class,
-                    () -> df1.write().format("ydb").options(ydbCreds).mode(SaveMode.Append).save("datetypes/dates1")
+                    () -> df1.write().format("ydb")
+                            .options(ydbCreds)
+                            .option("table.autocreate", true)
+                            .option("table.useSignedDatetypes", false)
+                            .mode(SaveMode.Append).save("datetypes/dates1")
             );
             Assert.assertTrue(ex.getCause() instanceof IllegalArgumentException);
             Assert.assertEquals("negative daysSinceEpoch: -3559", ex.getCause().getMessage());
 
-            df1.write().format("ydb").options(ydbCreds).option("table.useSignedDatetypes", true).mode(SaveMode.Append)
+            df1.write().format("ydb")
+                    .options(ydbCreds)
+                    .option("table.autocreate", true)
+                    .option("table.useSignedDatetypes", true)
+                    .mode(SaveMode.Append)
                     .save("datetypes/dates2");
-            Assert.assertEquals(3l, spark.read().format("ydb").options(ydbCreds).load("datetypes/dates2").count());
+            Assert.assertEquals(3l, readYdb().load("datetypes/dates2").count());
+        } finally {
+            // recover all loggers
+            before.forEach((logger, level) -> Configurator.setLevel(logger, level));
+            readYdb().option("query", "DROP TABLE IF EXISTS `datetypes/dates1`").load().count();
+            readYdb().option("query", "DROP TABLE IF EXISTS `datetypes/dates2`").load().count();
+        }
+    }
+
+    @Test
+    public void writeProtobufTest() {
+        try {
+            TestData data = new TestData(true);
+
+            String createTable = "CREATE TABLE `datetypes/protobuf`(" + data.toYqlColumns() + "PRIMARY KEY(id));";
+            readYdb().option("query", createTable).load().count();
+
+            Dataset<Row> origin = spark.createDataFrame(data.generateSet(3000, 13000), data.getSchema());
+            origin.write().format("ydb").options(ydbCreds).mode(SaveMode.Append).save("datetypes/protobuf");
+
+            TestData.assertEquals("protobuf", 10000, origin, readYdb().load("datetypes/protobuf").orderBy("id"));
         } finally {
             spark.read().format("ydb").options(ydbCreds)
-                    .option("query", "DROP TABLE IF EXISTS `datetypes/dates1`")
-                    .load().count();
-            spark.read().format("ydb").options(ydbCreds)
-                    .option("query", "DROP TABLE IF EXISTS `datetypes/dates2`")
+                    .option("query", "DROP TABLE IF EXISTS `datetypes/protobuf`")
                     .load().count();
         }
     }
 
+    @Test
+    public void writeApacheArrowTest() {
+        try {
+            spark.read().format("ydb").options(ydbCreds)
+                    .option("query", "DROP TABLE IF EXISTS `datetypes/arrow`")
+                    .load().count();
 
+            TestData data = new TestData(true);
+
+            String createTable = "CREATE TABLE `datetypes/arrow`(" + data.toYqlColumns() + "PRIMARY KEY(id))"
+                    + " WITH (STORE=COLUMN, AUTO_PARTITIONING_MIN_PARTITIONS_COUNT=4);";
+            readYdb().option("query", createTable).load().count();
+
+            Dataset<Row> origin = spark.createDataFrame(data.generateSet(5000, 55000), data.getSchema());
+            origin.write().format("ydb")
+                    .options(ydbCreds)
+                    .option("useApacheArrow", true)
+                    .mode(SaveMode.Append).save("datetypes/arrow");
+
+            TestData.assertEquals("arrow", 50000, origin, readYdb().load("datetypes/arrow").orderBy("id"));
+        } finally {
+            spark.read().format("ydb").options(ydbCreds)
+                    .option("query", "DROP TABLE IF EXISTS `datetypes/arrow`")
+                    .load().count();
+        }
+    }
 }

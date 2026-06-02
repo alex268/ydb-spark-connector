@@ -441,6 +441,8 @@ public final class YdbTypes implements Serializable {
                 return convertUint64ToYdb(v, t);
             case Text:
                 return convertTextToYdb(v);
+            case Json:
+                return convertJsonToYdb(v);
             default:
                 throw new IllegalArgumentException("Conversion to type " + t + " is not supported");
         }
@@ -448,6 +450,10 @@ public final class YdbTypes implements Serializable {
 
     private Value<?> convertTextToYdb(Object v) {
         return PrimitiveValue.newText(v.toString());
+    }
+
+    private Value<?> convertJsonToYdb(Object v) {
+        return PrimitiveValue.newJson(v.toString());
     }
 
     private Value<?> convertUint8ToYdb(Object v, PrimitiveType t) {
