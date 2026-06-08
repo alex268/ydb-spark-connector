@@ -1,4 +1,4 @@
- package tech.ydb.spark.connector.write;
+package tech.ydb.spark.connector.write;
 
 import java.util.ArrayList;
 import java.util.HashMap;

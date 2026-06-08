@@ -34,26 +34,10 @@ class YdbWriterDataQuery extends YdbWriterProtobuf {
 
         this.query = sb.toString();
     }
-
     @Override
-    protected Batch buildTask(ListValue data) {
-        return new Batch() {
-            @Override
-            public int rowsCount() {
-                return data.size();
-            }
-
-            @Override
-            public int bytesSize() {
-                return data.toPb().getSerializedSize();
-            }
-
-            @Override
-            public CompletableFuture<Status> apply(Session session) {
-                Params prms = Params.of("$input", data);
-                return session.executeDataQuery(query, TxControl.serializableRw(), prms, settings)
-                        .thenApply(Result::getStatus);
-            }
-        };
+    protected CompletableFuture<Status> writeData(Session session, ListValue data) {
+        Params prms = Params.of("$input", data);
+        return session.executeDataQuery(query, TxControl.serializableRw(), prms, settings)
+                .thenApply(Result::getStatus);
     }
 }

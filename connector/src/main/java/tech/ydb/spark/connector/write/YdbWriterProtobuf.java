@@ -4,10 +4,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import org.apache.spark.sql.catalyst.InternalRow;
 
+import tech.ydb.core.Status;
 import tech.ydb.spark.connector.YdbTypes;
+import tech.ydb.table.Session;
 import tech.ydb.table.values.ListValue;
 import tech.ydb.table.values.StructType;
 import tech.ydb.table.values.Type;
@@ -59,13 +62,33 @@ abstract class YdbWriterProtobuf implements YdbWriter {
 
     @Override
     public Batch buildNextBatch() {
-        Value<?>[] copy = batch.toArray(new Value<?>[0]);
+        if (batch.isEmpty()) {
+            return null;
+        }
+
+        ListValue data = ListValue.of(batch.toArray(new Value<?>[0]));
         batch = new ArrayList<>();
         bytesSize = 0;
-        return buildTask(ListValue.of(copy));
+
+        return new Batch() {
+            @Override
+            public int rowsCount() {
+                return data.size();
+            }
+
+            @Override
+            public int bytesSize() {
+                return data.toPb().getSerializedSize();
+            }
+
+            @Override
+            public CompletableFuture<Status> apply(Session session) {
+                return writeData(session, data);
+            }
+        };
     }
 
-    protected abstract Batch buildTask(ListValue data);
+    protected abstract CompletableFuture<Status> writeData(Session session, ListValue data);
 
     @Override
     public void close() {

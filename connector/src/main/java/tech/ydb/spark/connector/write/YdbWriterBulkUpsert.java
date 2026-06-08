@@ -19,22 +19,7 @@ class YdbWriterBulkUpsert extends YdbWriterProtobuf {
     }
 
     @Override
-    protected Batch buildTask(ListValue data) {
-        return new Batch() {
-            @Override
-            public int rowsCount() {
-                return data.size();
-            }
-
-            @Override
-            public int bytesSize() {
-                return data.toPb().getSerializedSize();
-            }
-
-            @Override
-            public CompletableFuture<Status> apply(Session session) {
-                return session.executeBulkUpsert(tablePath, data, settings);
-            }
-        };
+    protected CompletableFuture<Status> writeData(Session session, ListValue data) {
+        return session.executeBulkUpsert(tablePath, data, settings);
     }
 }
