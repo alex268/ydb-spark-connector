@@ -17,12 +17,16 @@ abstract class YdbWriterProtobuf implements YdbWriter {
     private final YdbTypes types;
     private final StructType structType;
     private final ColumnEntry[] columns;
+    private final int maxRowsCount;
+    private final int maxBytesSize;
 
     private List<Value<?>> batch = new ArrayList<>();
     private int bytesSize = 0;
 
-    protected YdbWriterProtobuf(YdbTypes types, List<ColumnEntry> columnsList) {
+    protected YdbWriterProtobuf(YdbTypes types, List<ColumnEntry> columnsList, int maxRowsCount, int maxBytesSize) {
         this.types = types;
+        this.maxRowsCount = maxRowsCount;
+        this.maxBytesSize = maxBytesSize;
 
         Map<String, Type> structTypes = new HashMap<>();
         Map<String, ColumnEntry> structColumns = new HashMap<>();
@@ -39,6 +43,11 @@ abstract class YdbWriterProtobuf implements YdbWriter {
     }
 
     @Override
+    public boolean needToFlush() {
+        return bytesSize >= maxBytesSize || batch.size() >= maxRowsCount;
+    }
+
+    @Override
     public void appendRow(InternalRow record) {
         Value<?>[] row = new Value<?>[columns.length];
         for (int idx = 0; idx < row.length; ++idx) {
@@ -49,24 +58,14 @@ abstract class YdbWriterProtobuf implements YdbWriter {
     }
 
     @Override
-    public int rowsCount() {
-        return batch.size();
-    }
-
-    @Override
-    public int bytesSize() {
-        return bytesSize;
-    }
-
-    @Override
-    public Task buildAndReset() {
+    public Batch buildNextBatch() {
         Value<?>[] copy = batch.toArray(new Value<?>[0]);
         batch = new ArrayList<>();
         bytesSize = 0;
         return buildTask(ListValue.of(copy));
     }
 
-    protected abstract Task buildTask(ListValue data);
+    protected abstract Batch buildTask(ListValue data);
 
     @Override
     public void close() {

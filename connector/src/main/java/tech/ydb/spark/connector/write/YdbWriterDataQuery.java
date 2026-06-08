@@ -1,10 +1,13 @@
 package tech.ydb.spark.connector.write;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import tech.ydb.core.Result;
+import tech.ydb.core.Status;
 import tech.ydb.spark.connector.YdbTypes;
+import tech.ydb.table.Session;
 import tech.ydb.table.query.Params;
 import tech.ydb.table.settings.ExecuteDataQuerySettings;
 import tech.ydb.table.transaction.TxControl;
@@ -14,8 +17,9 @@ class YdbWriterDataQuery extends YdbWriterProtobuf {
     private final String query;
     private final ExecuteDataQuerySettings settings = new ExecuteDataQuerySettings();
 
-    YdbWriterDataQuery(String command, String tablePath, YdbTypes types, List<ColumnEntry> columns) {
-        super(types, columns);
+    YdbWriterDataQuery(String command, String tablePath, YdbTypes types, int maxRowsCount, int maxBytesSize,
+            List<ColumnEntry> columns) {
+        super(types, columns, maxRowsCount, maxBytesSize);
 
         StringBuilder sb = new StringBuilder();
         sb.append("DECLARE $input AS List<Struct<");
@@ -32,9 +36,24 @@ class YdbWriterDataQuery extends YdbWriterProtobuf {
     }
 
     @Override
-    protected Task buildTask(ListValue data) {
-        Params prms = Params.of("$input", data);
-        return session -> session.executeDataQuery(query, TxControl.serializableRw(), prms, settings)
-                .thenApply(Result::getStatus);
+    protected Batch buildTask(ListValue data) {
+        return new Batch() {
+            @Override
+            public int rowsCount() {
+                return data.size();
+            }
+
+            @Override
+            public int bytesSize() {
+                return data.toPb().getSerializedSize();
+            }
+
+            @Override
+            public CompletableFuture<Status> apply(Session session) {
+                Params prms = Params.of("$input", data);
+                return session.executeDataQuery(query, TxControl.serializableRw(), prms, settings)
+                        .thenApply(Result::getStatus);
+            }
+        };
     }
 }

@@ -9,16 +9,16 @@ import tech.ydb.core.Status;
 import tech.ydb.table.Session;
 
 interface YdbWriter extends AutoCloseable {
-    @FunctionalInterface
-    interface Task extends Function<Session, CompletableFuture<Status>> { }
+    interface Batch extends Function<Session, CompletableFuture<Status>> {
+        int rowsCount();
+        int bytesSize();
+    }
 
     void appendRow(InternalRow record);
 
-    int rowsCount();
+    boolean needToFlush();
 
-    int bytesSize();
-
-    Task buildAndReset();
+    Batch buildNextBatch();
 
     @Override
     void close();

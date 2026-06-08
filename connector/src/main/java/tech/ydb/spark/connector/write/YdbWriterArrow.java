@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.util.DateTimeUtils;
@@ -14,6 +15,8 @@ import org.apache.spark.sql.types.Decimal;
 import org.apache.spark.sql.util.ArrowUtils;
 import org.apache.spark.unsafe.types.UTF8String;
 
+import tech.ydb.core.Status;
+import tech.ydb.table.Session;
 import tech.ydb.table.query.arrow.ApacheArrowData;
 import tech.ydb.table.query.arrow.ApacheArrowWriter;
 import tech.ydb.table.settings.BulkUpsertSettings;
@@ -31,14 +34,18 @@ public class YdbWriterArrow implements YdbWriter {
     private final String tablePath;
     private final ApacheArrowWriter arrowWriter;
     private final BulkUpsertSettings settings = new BulkUpsertSettings();
+    private final int maxRowsCount;
+    private final int maxBytesSize;
 
     private ApacheArrowWriter.Batch batch;
     private int rowsCount = 0;
     private int bytesSize = 0;
 
-    public YdbWriterArrow(String tablePath, List<ColumnEntry> columns) {
+    public YdbWriterArrow(String tablePath, List<ColumnEntry> columns, int maxRowsCount, int maxBytesSize) {
         this.columns = columns;
         this.tablePath = tablePath;
+        this.maxRowsCount = maxRowsCount;
+        this.maxBytesSize = maxBytesSize;
 
         ApacheArrowWriter.Schema schema = ApacheArrowWriter.newSchema();
         for (ColumnEntry column: columns) {
@@ -59,13 +66,8 @@ public class YdbWriterArrow implements YdbWriter {
     }
 
     @Override
-    public int rowsCount() {
-        return rowsCount;
-    }
-
-    @Override
-    public int bytesSize() {
-        return bytesSize;
+    public boolean needToFlush() {
+        return bytesSize >= maxBytesSize || rowsCount >= maxRowsCount;
     }
 
     @Override
@@ -74,13 +76,34 @@ public class YdbWriterArrow implements YdbWriter {
     }
 
     @Override
-    public Task buildAndReset() {
+    public Batch buildNextBatch() {
+        if (rowsCount <= 0) {
+            return null;
+        }
         try {
-            ApacheArrowData data = batch.buildBatch();
+            Batch next = new Batch() {
+                private final int count = rowsCount;
+                private final ApacheArrowData data = batch.buildBatch();
+                @Override
+                public int rowsCount() {
+                    return count;
+                }
+
+                @Override
+                public int bytesSize() {
+                    return data.getData().size() + data.getSchema().size();
+                }
+
+                @Override
+                public CompletableFuture<Status> apply(Session session) {
+                    return session.executeBulkUpsert(tablePath, data, settings);
+                }
+            };
+
             rowsCount = 0;
             bytesSize = 0;
             batch = arrowWriter.createNewBatch(0);
-            return session -> session.executeBulkUpsert(tablePath, data, settings);
+            return next;
         } catch (IOException ex) {
             throw new UncheckedIOException("Failed to serialize Arrow batch", ex);
         }

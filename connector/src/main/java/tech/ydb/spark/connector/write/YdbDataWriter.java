@@ -25,18 +25,14 @@ class YdbDataWriter implements DataWriter<InternalRow> {
 
     private final SessionRetryContext retryCtx;
     private final YdbWriter writer;
-    private final int maxRowsCount;
-    private final int maxBytesSize;
     private final int maxConcurrency;
     private final Semaphore semaphore;
 
     private volatile Status lastError = null;
 
-    YdbDataWriter(SessionRetryContext retryCtx, YdbWriter writer, int maxRowsCount, int maxBatchSize, int concurrency) {
+    YdbDataWriter(SessionRetryContext retryCtx, YdbWriter writer, int concurrency) {
         this.retryCtx = retryCtx;
         this.writer = writer;
-        this.maxRowsCount = maxRowsCount;
-        this.maxBytesSize = maxBatchSize;
         this.maxConcurrency = concurrency;
         this.semaphore = new Semaphore(maxConcurrency);
     }
@@ -50,7 +46,7 @@ class YdbDataWriter implements DataWriter<InternalRow> {
         }
 
         writer.appendRow(record);
-        if (writer.rowsCount() >= maxRowsCount || writer.bytesSize() >= maxBytesSize) {
+        if (writer.needToFlush()) {
             flushBatch();
         }
     }
@@ -84,14 +80,10 @@ class YdbDataWriter implements DataWriter<InternalRow> {
     }
 
     private void flushBatch() {
-        int rows = writer.rowsCount();
-        if (rows <= 0) {
+        YdbWriter.Batch batch = writer.buildNextBatch();
+        if (batch == null) {
             return;
         }
-
-        int batchBytesSize = writer.bytesSize();
-        YdbWriter.Task sendTask = writer.buildAndReset();
-        OutputMetrics metrics = TaskContext.get().taskMetrics().outputMetrics();
 
         semaphore.acquireUninterruptibly();
         if (lastError != null) {
@@ -99,7 +91,11 @@ class YdbDataWriter implements DataWriter<InternalRow> {
             return;
         }
 
-        retryCtx.supplyStatus(sendTask).whenComplete((st, th) -> {
+        int rows = batch.rowsCount();
+        int batchBytesSize = batch.bytesSize();
+        OutputMetrics metrics = TaskContext.get().taskMetrics().outputMetrics();
+
+        retryCtx.supplyStatus(batch).whenComplete((st, th) -> {
             if (st != null && st.isSuccess()) {
                 metrics._bytesWritten().add(batchBytesSize);
                 metrics._recordsWritten().add(rows);
