@@ -29,6 +29,8 @@ import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
 
+import tech.ydb.core.StatusCode;
+import tech.ydb.core.UnexpectedResultException;
 import tech.ydb.spark.connector.impl.YdbExecutor;
 import tech.ydb.test.junit4.YdbHelperRule;
 
@@ -157,6 +159,80 @@ public class DataTypesTest {
         } finally {
             spark.read().format("ydb").options(ydbCreds)
                     .option("query", "DROP TABLE IF EXISTS `datetypes/protobuf`")
+                    .load().count();
+        }
+    }
+
+    @Test
+    public void writeInsertTest() {
+        Map<ExtendedLogger, Level> before = new HashMap<>();
+        try {
+            TestData data = new TestData(true);
+
+            String createTable = "CREATE TABLE `datetypes/insert_test`(" + data.toYqlColumns() + "PRIMARY KEY(id));";
+            readYdb().option("query", createTable).load().count();
+
+            Dataset<Row> origin = spark.createDataFrame(data.generateSet(100, 600), data.getSchema());
+            origin.write().format("ydb").options(ydbCreds)
+                    .option("method", "INSERT")
+                    .mode(SaveMode.Append).save("datetypes/insert_test");
+
+            TestData.assertEquals("insert_test", 500, origin, readYdb().load("datetypes/insert_test").orderBy("id"));
+
+            for (Class<?> clazz: new Class<?>[] {
+                tech.ydb.spark.connector.write.YdbDataWriter.class,
+                org.apache.spark.util.Utils.class,
+                org.apache.spark.executor.Executor.class,
+                org.apache.spark.sql.execution.datasources.v2.AppendDataExec.class,
+                org.apache.spark.sql.execution.datasources.v2.DataWritingSparkTask.class,
+            }) {
+                ExtendedLogger logger = LogManager.getContext(true).getLogger(clazz);
+                before.put(logger, logger.getLevel());
+                // hide logger
+                Configurator.setLevel(logger, Level.OFF);
+            }
+
+            // second insert will get PRECONDITION_FAILED
+            SparkException ex = Assert.assertThrows(SparkException.class,
+                    () -> origin.write().format("ydb").options(ydbCreds)
+                            .option("method", "INSERT")
+                            .mode(SaveMode.Append).save("datetypes/insert_test")
+            );
+            Assert.assertTrue(ex.getCause() instanceof UnexpectedResultException);
+            UnexpectedResultException reason = (UnexpectedResultException) ex.getCause();
+            Assert.assertEquals(StatusCode.PRECONDITION_FAILED, reason.getStatus().getCode());
+        } finally {
+            // recover all loggers
+            before.forEach((logger, level) -> Configurator.setLevel(logger, level));
+            spark.read().format("ydb").options(ydbCreds)
+                    .option("query", "DROP TABLE IF EXISTS `datetypes/insert_test`")
+                    .load().count();
+        }
+    }
+
+    @Test
+    public void writeUpsertTest() {
+        try {
+            TestData data = new TestData(true);
+
+            String createTable = "CREATE TABLE `datetypes/upsert_test`(" + data.toYqlColumns() + "PRIMARY KEY(id));";
+            readYdb().option("query", createTable).load().count();
+
+            Dataset<Row> origin = spark.createDataFrame(data.generateSet(1000, 2000), data.getSchema());
+            origin.write().format("ydb").options(ydbCreds)
+                    .option("method", "UPSERT")
+                    .mode(SaveMode.Append).save("datetypes/upsert_test");
+
+            TestData.assertEquals("upsert_test", 1000, origin, readYdb().load("datetypes/upsert_test").orderBy("id"));
+
+            origin.write().format("ydb").options(ydbCreds)
+                    .option("method", "UPSERT")
+                    .mode(SaveMode.Append).save("datetypes/upsert_test");
+
+            TestData.assertEquals("upsert_test", 1000, origin, readYdb().load("datetypes/upsert_test").orderBy("id"));
+        } finally {
+            spark.read().format("ydb").options(ydbCreds)
+                    .option("query", "DROP TABLE IF EXISTS `datetypes/upsert_test`")
                     .load().count();
         }
     }

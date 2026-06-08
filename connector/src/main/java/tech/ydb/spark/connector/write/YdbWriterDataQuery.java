@@ -38,9 +38,9 @@ class YdbWriterDataQuery extends YdbWriterProtobuf {
 
         this.query = sb.toString();
     }
+
     @Override
     protected CompletableFuture<Status> writeData(Session session, ValueProtos.TypedValue data) {
-
         return session.executeDataQuery(query, TxControl.serializableRw(), new OneValueParams(data), settings)
                 .thenApply(Result::getStatus);
     }

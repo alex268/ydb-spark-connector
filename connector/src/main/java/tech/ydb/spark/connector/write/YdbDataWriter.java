@@ -20,7 +20,7 @@ import tech.ydb.table.SessionRetryContext;
  *
  * @author Aleksandr Gorshenin {@literal <alexandr268@ydb.tech>}
  */
-class YdbDataWriter implements DataWriter<InternalRow> {
+public class YdbDataWriter implements DataWriter<InternalRow> {
     private static final Logger logger = LoggerFactory.getLogger(YdbDataWriter.class);
 
     private final SessionRetryContext retryCtx;
