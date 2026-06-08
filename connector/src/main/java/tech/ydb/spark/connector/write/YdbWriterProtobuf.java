@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.spark.sql.catalyst.InternalRow;
 
 import tech.ydb.core.Status;
+import tech.ydb.proto.ValueProtos;
 import tech.ydb.spark.connector.YdbTypes;
 import tech.ydb.table.Session;
 import tech.ydb.table.values.ListValue;
@@ -66,29 +67,34 @@ abstract class YdbWriterProtobuf implements YdbWriter {
             return null;
         }
 
-        ListValue data = ListValue.of(batch.toArray(new Value<?>[0]));
+        ListValue lv = ListValue.of(batch.toArray(new Value<?>[0]));
+        ValueProtos.TypedValue tv = ValueProtos.TypedValue.newBuilder()
+                .setType(lv.getType().toPb())
+                .setValue(lv.toPb())
+                .build();
+
         batch = new ArrayList<>();
         bytesSize = 0;
 
         return new Batch() {
             @Override
             public int rowsCount() {
-                return data.size();
+                return tv.getValue().getItemsCount();
             }
 
             @Override
             public int bytesSize() {
-                return data.toPb().getSerializedSize();
+                return tv.getSerializedSize();
             }
 
             @Override
             public CompletableFuture<Status> apply(Session session) {
-                return writeData(session, data);
+                return writeData(session, tv);
             }
         };
     }
 
-    protected abstract CompletableFuture<Status> writeData(Session session, ListValue data);
+    protected abstract CompletableFuture<Status> writeData(Session session, ValueProtos.TypedValue data);
 
     @Override
     public void close() {

@@ -4,10 +4,11 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import tech.ydb.core.Status;
+import tech.ydb.proto.ValueProtos;
 import tech.ydb.spark.connector.YdbTypes;
 import tech.ydb.table.Session;
+import tech.ydb.table.query.BulkUpsertData;
 import tech.ydb.table.settings.BulkUpsertSettings;
-import tech.ydb.table.values.ListValue;
 
 class YdbWriterBulkUpsert extends YdbWriterProtobuf {
     private final String tablePath;
@@ -19,7 +20,7 @@ class YdbWriterBulkUpsert extends YdbWriterProtobuf {
     }
 
     @Override
-    protected CompletableFuture<Status> writeData(Session session, ListValue data) {
-        return session.executeBulkUpsert(tablePath, data, settings);
+    protected CompletableFuture<Status> writeData(Session session, ValueProtos.TypedValue data) {
+        return session.executeBulkUpsert(tablePath, new BulkUpsertData(data), settings);
     }
 }
