@@ -73,7 +73,7 @@ public class YdbDataWriterFactory implements DataWriterFactory {
         boolean idempotent = method != IngestMethod.INSERT;
         SessionRetryContext retryCtx = table.getCtx().getExecutor().createRetryCtx(retryCount, idempotent);
         YdbWriter writer = buildYdbWriter();
-        return new YdbDataWriter(retryCtx, writer, batchRowsCount, batchBytesLimit, batchConcurrency);
+        return new YdbDataWriter(retryCtx, writer, batchConcurrency);
     }
 
     private YdbWriter buildYdbWriter() {
@@ -82,12 +82,12 @@ public class YdbDataWriterFactory implements DataWriterFactory {
 
         if (method == IngestMethod.BULK_UPSERT) {
             if (useApacheArrow) {
-                return new YdbWriterArrow(tablePath, columns);
+                return new YdbWriterArrow(tablePath, columns, batchRowsCount, batchBytesLimit);
             }
-            return new YdbWriterBulkUpsert(tablePath, types, columns);
+            return new YdbWriterBulkUpsert(tablePath, types, batchRowsCount, batchBytesLimit, columns);
         }
 
-        return new YdbWriterDataQuery(method.name(), tablePath, types, columns);
+        return new YdbWriterDataQuery(method.name(), tablePath, types, batchRowsCount, batchBytesLimit, columns);
     }
 
     private List<ColumnEntry> buildColumns() {

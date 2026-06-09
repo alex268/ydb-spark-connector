@@ -4,10 +4,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import org.apache.spark.sql.catalyst.InternalRow;
 
+import tech.ydb.core.Status;
+import tech.ydb.proto.ValueProtos;
 import tech.ydb.spark.connector.YdbTypes;
+import tech.ydb.table.Session;
 import tech.ydb.table.values.ListValue;
 import tech.ydb.table.values.StructType;
 import tech.ydb.table.values.Type;
@@ -17,12 +21,16 @@ abstract class YdbWriterProtobuf implements YdbWriter {
     private final YdbTypes types;
     private final StructType structType;
     private final ColumnEntry[] columns;
+    private final int maxRowsCount;
+    private final int maxBytesSize;
 
     private List<Value<?>> batch = new ArrayList<>();
     private int bytesSize = 0;
 
-    protected YdbWriterProtobuf(YdbTypes types, List<ColumnEntry> columnsList) {
+    protected YdbWriterProtobuf(YdbTypes types, List<ColumnEntry> columnsList, int maxRowsCount, int maxBytesSize) {
         this.types = types;
+        this.maxRowsCount = maxRowsCount;
+        this.maxBytesSize = maxBytesSize;
 
         Map<String, Type> structTypes = new HashMap<>();
         Map<String, ColumnEntry> structColumns = new HashMap<>();
@@ -39,6 +47,11 @@ abstract class YdbWriterProtobuf implements YdbWriter {
     }
 
     @Override
+    public boolean needToFlush() {
+        return bytesSize >= maxBytesSize || batch.size() >= maxRowsCount;
+    }
+
+    @Override
     public void appendRow(InternalRow record) {
         Value<?>[] row = new Value<?>[columns.length];
         for (int idx = 0; idx < row.length; ++idx) {
@@ -49,24 +62,39 @@ abstract class YdbWriterProtobuf implements YdbWriter {
     }
 
     @Override
-    public int rowsCount() {
-        return batch.size();
-    }
+    public Batch buildNextBatch() {
+        if (batch.isEmpty()) {
+            return null;
+        }
 
-    @Override
-    public int bytesSize() {
-        return bytesSize;
-    }
+        ListValue lv = ListValue.of(batch.toArray(new Value<?>[0]));
+        ValueProtos.TypedValue tv = ValueProtos.TypedValue.newBuilder()
+                .setType(lv.getType().toPb())
+                .setValue(lv.toPb())
+                .build();
 
-    @Override
-    public Task buildAndReset() {
-        Value<?>[] copy = batch.toArray(new Value<?>[0]);
         batch = new ArrayList<>();
         bytesSize = 0;
-        return buildTask(ListValue.of(copy));
+
+        return new Batch() {
+            @Override
+            public int rowsCount() {
+                return tv.getValue().getItemsCount();
+            }
+
+            @Override
+            public int bytesSize() {
+                return tv.getSerializedSize();
+            }
+
+            @Override
+            public CompletableFuture<Status> apply(Session session) {
+                return writeData(session, tv);
+            }
+        };
     }
 
-    protected abstract Task buildTask(ListValue data);
+    protected abstract CompletableFuture<Status> writeData(Session session, ValueProtos.TypedValue data);
 
     @Override
     public void close() {
