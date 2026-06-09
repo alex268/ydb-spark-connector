@@ -1,7 +1,8 @@
 package tech.ydb.spark.connector;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.sql.Dataset;
@@ -31,23 +32,23 @@ public class DataFramesTest {
     @ClassRule
     public static final YdbHelperRule YDB = new YdbHelperRule();
 
-    private static String ydbURL;
+    private static Map<String, String> ydbCreds;
     private static YdbContext ctx;
     private static SparkSession spark;
 
     @BeforeClass
     public static void prepare() {
-        StringBuilder url = new StringBuilder()
+        ydbCreds = new HashMap<>();
+        ydbCreds.put("url", new StringBuilder()
                 .append(YDB.useTls() ? "grpcs://" : "grpc://")
                 .append(YDB.endpoint())
-                .append(YDB.database());
+                .append(YDB.database())
+                .toString());
 
         if (YDB.authToken() != null) {
-            url.append("?").append("token=").append(YDB.authToken());
+            ydbCreds.put("auth.token", YDB.authToken());
         }
-
-        ydbURL = url.toString();
-        ctx = new YdbContext(Collections.singletonMap("url", ydbURL));
+        ctx = new YdbContext(ydbCreds);
 
         prepareTables(ctx.getExecutor());
 
@@ -131,50 +132,50 @@ public class DataFramesTest {
 
     @Test
     public void countRowTableTest() {
-        long count = spark.read().format("ydb").option("url", ydbURL).option("dbtable", "row_table").load().count();
+        long count = spark.read().format("ydb").options(ydbCreds).option("dbtable", "row_table").load().count();
         Assert.assertEquals(10, count);
 
-        long count2 = spark.read().format("ydb").option("url", ydbURL).load("row_table").count();
+        long count2 = spark.read().format("ydb").options(ydbCreds).load("row_table").count();
         Assert.assertEquals(count, count2);
 
-        long count3 = spark.read().format("ydb").option("url", ydbURL).option("useReadTable", "true")
+        long count3 = spark.read().format("ydb").options(ydbCreds).option("useReadTable", "true")
                 .load("row_table").count();
         Assert.assertEquals(count2, count3);
     }
 
     @Test
     public void countColumnTableTest() {
-        long count = spark.read().format("ydb").option("url", ydbURL).option("dbtable", "column_table").load().count();
+        long count = spark.read().format("ydb").options(ydbCreds).option("dbtable", "column_table").load().count();
         Assert.assertEquals(10, count);
 
-        long count2 = spark.read().format("ydb").option("url", ydbURL).load("column_table").count();
+        long count2 = spark.read().format("ydb").options(ydbCreds).load("column_table").count();
         Assert.assertEquals(count, count2);
     }
 
     @Test
     public void countSplittedTableTest() {
-        long count = spark.read().format("ydb").option("url", ydbURL).option("dbtable", "dir/splitted").load().count();
+        long count = spark.read().format("ydb").options(ydbCreds).option("dbtable", "dir/splitted").load().count();
         Assert.assertEquals(10, count);
 
-        long count2 = spark.read().format("ydb").option("url", ydbURL).load("dir/splitted").count();
+        long count2 = spark.read().format("ydb").options(ydbCreds).load("dir/splitted").count();
         Assert.assertEquals(count, count2);
 
-        long count3 = spark.read().format("ydb").option("url", ydbURL).option("useReadTable", "true")
+        long count3 = spark.read().format("ydb").options(ydbCreds).option("useReadTable", "true")
                 .load("dir/splitted").count();
         Assert.assertEquals(count2, count3);
     }
 
     @Test
     public void tableAutoCreateTest() {
-        Dataset<Row> origin = spark.read().format("ydb").option("url", ydbURL).load("row_table");
+        Dataset<Row> origin = spark.read().format("ydb").options(ydbCreds).load("row_table");
 
         Assert.assertEquals(10, origin.count());
         Assert.assertEquals(2, origin.schema().length());
         Assert.assertArrayEquals(new String[] {"id", "value"} , origin.schema().fieldNames());
 
         try {
-            origin.write().format("ydb").option("url", ydbURL).mode(SaveMode.Append).save("copy/row_table1");
-            Dataset<Row> copy = spark.read().format("ydb").option("url", ydbURL).load("copy/row_table1");
+            origin.write().format("ydb").options(ydbCreds).mode(SaveMode.Append).save("copy/row_table1");
+            Dataset<Row> copy = spark.read().format("ydb").options(ydbCreds).load("copy/row_table1");
 
             Assert.assertEquals(10, copy.count());
             Assert.assertArrayEquals(new String[] {"id", "value", "_spark_key"} , copy.schema().fieldNames());
@@ -185,7 +186,7 @@ public class DataFramesTest {
 
     @Test
     public void tableAutoCreateWithKeysTest() {
-        Dataset<Row> origin = spark.read().format("ydb").option("url", ydbURL).load("row_table");
+        Dataset<Row> origin = spark.read().format("ydb").options(ydbCreds).load("row_table");
 
         Assert.assertEquals(10, origin.count());
         Assert.assertEquals(2, origin.schema().length());
@@ -193,12 +194,12 @@ public class DataFramesTest {
 
         try {
             origin.write().format("ydb")
-                    .option("url", ydbURL)
+                    .options(ydbCreds)
                     .option("table.primary_keys", "value, id")
                     .mode(SaveMode.Append)
                     .save("copy/row_table2");
             Dataset<Row> copy = spark.read().format("ydb")
-                    .option("url", ydbURL)
+                    .options(ydbCreds)
                     .load("copy/row_table2");
 
             Assert.assertEquals(10, copy.count());
@@ -213,7 +214,7 @@ public class DataFramesTest {
 
     @Test
     public void tableAutoCreateColumnTableTest() {
-        Dataset<Row> origin = spark.read().format("ydb").option("url", ydbURL).load("row_table");
+        Dataset<Row> origin = spark.read().format("ydb").options(ydbCreds).load("row_table");
 
         Assert.assertEquals(10, origin.count());
         Assert.assertEquals(2, origin.schema().length());
@@ -221,13 +222,13 @@ public class DataFramesTest {
 
         try {
             origin.write().format("ydb")
-                    .option("url", ydbURL)
+                    .options(ydbCreds)
                     .option("table.primary_keys", " , value,,,")
                     .option("table.type", "column")
                     .mode(SaveMode.Append)
                     .save("copy/column_table");
             Dataset<Row> copy = spark.read().format("ydb")
-                    .option("url", ydbURL)
+                    .options(ydbCreds)
                     .load("copy/column_table");
 
             Assert.assertEquals(10, copy.count());
