@@ -28,6 +28,7 @@ import tech.ydb.core.impl.auth.GrpcAuthRpc;
 import tech.ydb.core.utils.URITools;
 import tech.ydb.query.QueryClient;
 import tech.ydb.spark.connector.common.ConnectionOption;
+import tech.ydb.spark.connector.common.ConnectorVersion;
 import tech.ydb.spark.connector.impl.YdbExecutor;
 import tech.ydb.table.TableClient;
 
@@ -36,10 +37,12 @@ import tech.ydb.table.TableClient;
  * @author Aleksandr Gorshenin
  */
 public class YdbContext implements Serializable, AutoCloseable {
+    private static final String APP_NAME = "ydb-spark-connector";
 
     private static final Logger logger = LoggerFactory.getLogger(YdbContext.class);
 
     private static final long serialVersionUID = 6522842483896983993L;
+
 
     // copy URL paramter names from JDBC
     private static final String JDBC_TOKEN_FILE = "tokenFile";
@@ -88,7 +91,7 @@ public class YdbContext implements Serializable, AutoCloseable {
 
     @Override
     public String toString() {
-        return "YDBContext{" + connectionString + "}";
+        return "YDBContext " + ConnectorVersion.getInstance().getFullVersion() + "{" + connectionString + "}";
     }
 
     @Override
@@ -147,6 +150,8 @@ public class YdbContext implements Serializable, AutoCloseable {
 
     private GrpcTransport createGrpcTransport() {
         GrpcTransportBuilder builder = GrpcTransport.forConnectionString(connectionString.trim())
+                .withApplicationName(APP_NAME)
+                .withExtraBuildInfo(APP_NAME + "/" + ConnectorVersion.getInstance().getConnectorVersion())
                 .withAuthProvider(createAuthProvider());
         if (caCertBytes != null) {
             builder = builder.withSecureConnection(caCertBytes);
