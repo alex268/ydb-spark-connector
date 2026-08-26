@@ -125,8 +125,8 @@ public class TestData {
             Timestamp colDatetime = new Timestamp(3601L * id * 1000);
             Timestamp colDatetime64 = new Timestamp(3601L * sign * id * 1000);
 
-            Timestamp colTimestamp = new Timestamp(86400L * id * 311);
-            Timestamp colTimestamp64 = new Timestamp(86400L * sign * id * 311);
+            Instant colTimestamp = Instant.ofEpochSecond(31123L * id, 1000 * id);
+            Instant colTimestamp64 = Instant.ofEpochSecond(31123L * sign * id, 1000 * id);
 
 //            Duration colInterval = Duration.ofMillis(id * 3121);
 //            Duration colInterval64 = Duration.ofMillis(id * sign * 3121);
