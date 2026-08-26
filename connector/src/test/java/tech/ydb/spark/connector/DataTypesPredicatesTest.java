@@ -275,14 +275,14 @@ public class DataTypesPredicatesTest {
     public void timestampPredicateTest() {
         assertPredicateCount("col_timestamp >= timestamp'1960-01-01 00:00:00'", 2000);
         assertPredicateCount("col_timestamp < timestamp'1970-01-01 00:00:00'", 0);
-        assertPredicateCount("col_timestamp <= timestamp'1971-01-01 00:00:00'", 1174);
-        assertPredicateCount("col_timestamp = timestamp'1970-01-03 19:10:33.6Z'", 1);
+        assertPredicateCount("col_timestamp <= timestamp'1971-01-01 00:00:00'", 1014);
+        assertPredicateCount("col_timestamp = timestamp'1971-03-21 12:16:22.001234Z'", 1);
     }
 
     public void timestamp64PredicateTest() {
         assertPredicateCount("col_timestamp64 >= timestamp'1960-01-01 00:00:00'", 2000);
         assertPredicateCount("col_timestamp64 < timestamp'1970-01-01 00:00:00'", 999);
-        assertPredicateCount("col_timestamp64 <= timestamp'1971-01-01 00:00:00'", 1587);
-        assertPredicateCount("col_timestamp64 = timestamp'1970-01-03 19:10:33.6Z'", 1);
+        assertPredicateCount("col_timestamp64 <= timestamp'1971-01-01 00:00:00'", 1507);
+        assertPredicateCount("col_timestamp64 = timestamp'1968-10-13 11:43:38.001234Z'", 1);
     }
 }
