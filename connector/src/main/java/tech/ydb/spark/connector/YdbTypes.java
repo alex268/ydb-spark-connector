@@ -311,13 +311,12 @@ public final class YdbTypes implements Serializable {
                         if (dateAsString) {
                             return UTF8String.fromString(v.asData().getDatetime().toString());
                         }
-                        return v.asData().getDatetime()
-                                .toInstant(ZoneOffset.UTC).toEpochMilli() * 1000L;
+                        return DateTimeUtils.instantToMicros(v.asData().getDatetime().toInstant(ZoneOffset.UTC));
                     case Timestamp:
                         if (dateAsString) {
                             return UTF8String.fromString(v.asData().getTimestamp().toString());
                         }
-                        return v.asData().getTimestamp().toEpochMilli() * 1000L;
+                        return DateTimeUtils.instantToMicros(v.asData().getTimestamp());
                     case Interval:
                         return v.asData().getInterval();
                     case Date32:
@@ -329,13 +328,12 @@ public final class YdbTypes implements Serializable {
                         if (dateAsString) {
                             return UTF8String.fromString(v.asData().getDatetime64().toString());
                         }
-                        return v.asData().getDatetime64()
-                                .toInstant(ZoneOffset.UTC).toEpochMilli() * 1000L;
+                        return DateTimeUtils.instantToMicros(v.asData().getDatetime64().toInstant(ZoneOffset.UTC));
                     case Timestamp64:
                         if (dateAsString) {
                             return UTF8String.fromString(v.asData().getTimestamp64().toString());
                         }
-                        return v.asData().getTimestamp64().toEpochMilli() * 1000L;
+                        return DateTimeUtils.instantToMicros(v.asData().getTimestamp64());
                     case Interval64:
                         return v.asData().getInterval64();
                     case Double:
@@ -893,14 +891,14 @@ public final class YdbTypes implements Serializable {
                     if (dateAsString) {
                         row.update(i, UTF8String.fromString(vr.getDatetime().toString()));
                     } else {
-                        row.setLong(i, vr.getDatetime().toInstant(ZoneOffset.UTC).toEpochMilli() * 1000L);
+                        row.setLong(i, DateTimeUtils.instantToMicros(vr.getDatetime().toInstant(ZoneOffset.UTC)));
                     }
                     break;
                 case Timestamp:
                     if (dateAsString) {
                         row.update(i, UTF8String.fromString(vr.getTimestamp().toString()));
                     } else {
-                        row.setLong(i, vr.getTimestamp().toEpochMilli() * 1000L);
+                        row.setLong(i, DateTimeUtils.instantToMicros(vr.getTimestamp()));
                     }
                     break;
                 case Interval:
@@ -921,14 +919,14 @@ public final class YdbTypes implements Serializable {
                     if (dateAsString) {
                         row.update(i, UTF8String.fromString(vr.getDatetime64().toString()));
                     } else {
-                        row.setLong(i, vr.getDatetime64().toInstant(ZoneOffset.UTC).toEpochMilli() * 1000L);
+                        row.setLong(i, DateTimeUtils.instantToMicros(vr.getDatetime64().toInstant(ZoneOffset.UTC)));
                     }
                     break;
                 case Timestamp64:
                     if (dateAsString) {
                         row.update(i, UTF8String.fromString(vr.getTimestamp64().toString()));
                     } else {
-                        row.setLong(i, vr.getTimestamp64().toEpochMilli() * 1000L);
+                        row.setLong(i, DateTimeUtils.instantToMicros(vr.getTimestamp64()));
                     }
                     break;
                 case Interval64:
